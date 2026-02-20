@@ -138,7 +138,7 @@ All model classes use Java Records or are immutable:
 
 ---
 
-## ⚙️ How It Works
+## How It Works
 
 ### Dependency Analysis Flow
 
@@ -253,7 +253,7 @@ All model classes use Java Records or are immutable:
 
 ---
 
-## 🔎 Reflection Detection
+## Reflection Detection
 
 ### Why It Matters
 
@@ -294,7 +294,7 @@ By tracking `LDC` instructions that precede reflection calls, we can often ident
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Java 17+
@@ -440,48 +440,6 @@ curl -X POST http://localhost:8080/api/diff \
   ]
 }
 ```
-
----
-
-## 📚 Connection to Research
-
-This tool directly supports the research in:
-
-> **["Towards Cross-Build Differential Testing"](https://doi.org/10.1109/ICST62969.2025.10989044)**  
-> Dietrich, White, Terragni, Hassanshahi — IEEE ICST 2025, Naples, Italy
-
-### Key Findings from the Paper
-
-| Finding | Detail |
-|---------|--------|
-| **Dataset** | 3,541 binary pairs analyzed |
-| **JDK Mismatch Issue** | ByteBuffer.flip() signature changed between Java 8 and 11 |
-| **Runtime Failure** | NoSuchMethodError when running mismatched builds |
-| **Solution** | Use `-release` flag (JEP 247), not just `-target` |
-| **Test Failures** | 48+ failures detected across undertow, netty, commons-io |
-
-### How This Tool Complements the Research
-
-| Paper's Approach | This Tool's Approach |
-|------------------|----------------------|
-| Detect differences via EVOSUITE testing | Identify dependencies via static analysis |
-| After-the-fact failure detection | Proactive dependency understanding |
-| Focus on behavioral differences | Focus on structural dependencies |
-| Test generation on differing classes | Reflection-aware dependency mapping |
-
-**Combined workflow:** Use this tool to understand WHICH methods create dependencies, then use differential testing to verify if builds BEHAVE differently.
-
----
-
-## 👤 Author
-
-**Aashish K C**  
-MS Software Engineering, Gannon University (Dec 2024)  
-Principal Software Engineer, County of Erie, PA
-
-📧 asiskc143@gmail.com  
-🔗 [GitHub](https://github.com/Aashish792)
-
 ---
 
 ## 📄 License
