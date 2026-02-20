@@ -1,0 +1,10 @@
+com/aashish/BytecodeAnalysisToolsTest$ClassInfoTests.class
+com/aashish/BytecodeAnalysisToolsTest.class
+com/aashish/BytecodeAnalysisToolsTest$AnalysisResultTests.class
+com/aashish/BytecodeAnalysisToolsTest$IntegrationTests.class
+com/aashish/BytecodeAnalysisToolsTest$ReflectiveCallTests.class
+com/aashish/BytecodeAnalysisToolsTest$DiffResultTests.class
+com/aashish/BytecodeAnalysisToolsTest$MethodSignatureTests.class
+com/aashish/BytecodeAnalysisToolsTest$ReflectiveTypeTests.class
+com/aashish/BytecodeAnalysisToolsTest$MethodCallTests.class
+com/aashish/BytecodeAnalysisToolsTest$InvokeTypeTests.class
