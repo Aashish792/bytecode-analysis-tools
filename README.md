@@ -1,4 +1,4 @@
-# 🔍 Bytecode Analysis Tools for Reproducible Builds
+#  Bytecode Analysis Tools for Reproducible Builds
 
 > **Production-grade ASM-based bytecode analysis with reflection detection and build variability explanation**
 
@@ -9,7 +9,7 @@
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 
 1. [Overview](#-overview)
 2. [Key Features](#-key-features)
@@ -23,7 +23,7 @@
 
 ---
 
-## 🎯 Overview
+##  Overview
 
 This tool provides **two core capabilities** for reproducible builds research:
 
@@ -43,7 +43,7 @@ When the same source code is built in different environments (Maven Central vs G
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
 ### 1. Complete Invoke Type Detection
 
@@ -87,7 +87,7 @@ When comparing builds, explains WHY they differ:
 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 src/main/java/com/aashish/
