@@ -8,78 +8,70 @@ import java.util.jar.*;
 
 /**
  * ASM-based implementation for extracting method calls with reflection detection.
- * 
- * KEY CAPABILITIES:
- * 1. Detects all 5 JVM invoke types (virtual, static, special, interface, dynamic)
- * 2. Identifies reflection patterns that hide dependencies
- * 3. Attempts to capture target class/method names from LDC instructions
- * 
- * HOW REFLECTION DETECTION WORKS:
- * When we see code like: Class.forName("com.example.Service")
- * The string "com.example.Service" is loaded via an LDC instruction.
- * We track the last string constant and associate it with reflection calls.
- * 
- * LIMITATIONS:
- * - Cannot track strings passed through variables
- * - Cannot analyze string concatenation
- * - Cannot track reflection in lambdas completely
  */
 public class AsmMethodCallExtractor implements MethodCallExtractor {
-    
+
     @Override
     public ExtractionResult extract(String jarPath) throws IOException {
         Set<MethodCall> directCalls = new HashSet<>();
         List<ReflectiveCall> reflectiveCalls = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
         
-        try (JarFile jar = new JarFile(jarPath)) {
+        File jarFile = new File(jarPath);
+        if (!jarFile.exists()) {
+            throw new IOException("JAR file not found: " + jarPath);
+        }
+        
+        try (JarFile jar = new JarFile(jarFile)) {
             Enumeration<JarEntry> entries = jar.entries();
             
             while (entries.hasMoreElements()) {
                 JarEntry entry = entries.nextElement();
                 
                 if (isValidClassFile(entry)) {
-                    String className = entryToClassName(entry);
-                    extractCallsFromClass(jar, entry, className, directCalls, reflectiveCalls);
+                    try {
+                        String className = entryToClassName(entry);
+                        extractCallsFromClass(jar, entry, className, directCalls, reflectiveCalls);
+                    } catch (Exception e) {
+                        errors.add("Error processing " + entry.getName() + ": " + e.getMessage());
+                    }
                 }
             }
         }
         
-        return new ExtractionResult(directCalls, reflectiveCalls);
+        return new ExtractionResult(directCalls, reflectiveCalls, errors);
     }
     
     private boolean isValidClassFile(JarEntry entry) {
-        String name = entry.getName();
-        return name.endsWith(".class")
-            && !name.equals("module-info.class")
-            && !name.equals("package-info.class");
+        String entryName = entry.getName();
+        return entryName.endsWith(".class")
+            && !entryName.equals("module-info.class")
+            && !entryName.equals("package-info.class")
+            && !entryName.contains("META-INF/versions/");
     }
     
     private String entryToClassName(JarEntry entry) {
-        return entry.getName()
-            .replace("/", ".")
-            .replace(".class", "");
+        return entry.getName().replace("/", ".").replace(".class", "");
     }
     
     private void extractCallsFromClass(JarFile jar, JarEntry entry, String className,
                                         Set<MethodCall> directCalls,
                                         List<ReflectiveCall> reflectiveCalls) throws IOException {
         try (InputStream is = jar.getInputStream(entry)) {
-            ClassReader reader = new ClassReader(is);
+            byte[] bytes = is.readAllBytes();
+            ClassReader reader = new ClassReader(bytes);
             reader.accept(
                 new MethodCallVisitor(className, directCalls, reflectiveCalls),
-                ClassReader.SKIP_DEBUG
+                ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES
             );
         }
     }
     
-    /**
-     * ASM ClassVisitor that collects method calls and detects reflection.
-     */
     private static class MethodCallVisitor extends ClassVisitor {
         private final String sourceClass;
         private final Set<MethodCall> directCalls;
         private final List<ReflectiveCall> reflectiveCalls;
-        private String currentMethod = "";
+        private String currentMethod = "<unknown>";
         
         MethodCallVisitor(String sourceClass, Set<MethodCall> directCalls,
                          List<ReflectiveCall> reflectiveCalls) {
@@ -90,18 +82,15 @@ public class AsmMethodCallExtractor implements MethodCallExtractor {
         }
         
         @Override
-        public MethodVisitor visitMethod(int access, String name, String descriptor,
+        public MethodVisitor visitMethod(int access, String methodName, String descriptor,
                                          String signature, String[] exceptions) {
-            currentMethod = name;
+            currentMethod = methodName;
             return new InstructionVisitor();
         }
         
-        /**
-         * Visits individual bytecode instructions within a method.
-         */
         private class InstructionVisitor extends MethodVisitor {
-            // Track last string constant for reflection target detection
             private String lastStringConstant = null;
+            private String secondLastStringConstant = null;
             
             InstructionVisitor() {
                 super(Opcodes.ASM9);
@@ -109,65 +98,68 @@ public class AsmMethodCallExtractor implements MethodCallExtractor {
             
             @Override
             public void visitLdcInsn(Object value) {
-                // Track string constants - may be class/method names for reflection
                 if (value instanceof String s) {
+                    secondLastStringConstant = lastStringConstant;
                     lastStringConstant = s;
                 }
             }
             
             @Override
-            public void visitMethodInsn(int opcode, String owner, String name,
+            public void visitMethodInsn(int opcode, String owner, String methodName,
                                        String descriptor, boolean isInterface) {
-                // Record the direct call
-                InvokeType invokeType = InvokeType.fromOpcode(opcode);
-                directCalls.add(new MethodCall(
-                    owner, name, descriptor,
-                    invokeType,
-                    sourceClass, currentMethod
-                ));
-                
-                // Check for reflection patterns
-                ReflectiveCall reflection = detectReflection(owner, name);
-                if (reflection != null) {
-                    reflectiveCalls.add(reflection);
-                    lastStringConstant = null; // Clear after use
+                try {
+                    // Record the direct call
+                    InvokeType invokeType = InvokeType.fromOpcode(opcode);
+                    directCalls.add(new MethodCall(
+                        owner, methodName, descriptor,
+                        invokeType,
+                        sourceClass, currentMethod
+                    ));
+                    
+                    // Check for reflection patterns
+                    ReflectiveCall reflection = detectReflection(owner, methodName);
+                    if (reflection != null) {
+                        reflectiveCalls.add(reflection);
+                    }
+                } catch (Exception e) {
+                    // Skip problematic instructions
                 }
             }
             
             @Override
-            public void visitInvokeDynamicInsn(String name, String descriptor,
+            public void visitInvokeDynamicInsn(String methodName, String descriptor,
                                               Handle bootstrapMethod,
                                               Object... bootstrapArgs) {
-                // INVOKEDYNAMIC - typically lambdas and method references
-                directCalls.add(new MethodCall(
-                    "java/lang/invoke/LambdaMetafactory",
-                    name,
-                    descriptor,
-                    InvokeType.INVOKEDYNAMIC,
-                    sourceClass, currentMethod
-                ));
-                
-                // Check if lambda references reflection
-                for (Object arg : bootstrapArgs) {
-                    if (arg instanceof Handle h) {
-                        if (h.getOwner().startsWith("java/lang/reflect/")) {
-                            reflectiveCalls.add(new ReflectiveCall(
-                                ReflectiveType.METHOD_INVOKE,
-                                sourceClass, currentMethod,
-                                "Lambda using reflection",
-                                null
-                            ));
+                try {
+                    directCalls.add(new MethodCall(
+                        "java/lang/invoke/LambdaMetafactory",
+                        methodName,
+                        descriptor,
+                        InvokeType.INVOKEDYNAMIC,
+                        sourceClass, currentMethod
+                    ));
+                    
+                    // Check bootstrap args for reflection
+                    for (Object arg : bootstrapArgs) {
+                        if (arg instanceof Handle h) {
+                            if (h.getOwner().startsWith("java/lang/reflect/")) {
+                                reflectiveCalls.add(new ReflectiveCall(
+                                    ReflectiveType.METHOD_INVOKE,
+                                    sourceClass, currentMethod,
+                                    "Lambda with reflection",
+                                    null
+                                ));
+                            }
                         }
                     }
+                } catch (Exception e) {
+                    // Skip problematic instructions
                 }
             }
             
-            /**
-             * Detects reflection patterns and returns ReflectiveCall if found.
-             */
-            private ReflectiveCall detectReflection(String owner, String name) {
+            private ReflectiveCall detectReflection(String owner, String methodName) {
                 // Class.forName(String)
-                if (owner.equals("java/lang/Class") && name.equals("forName")) {
+                if ("java/lang/Class".equals(owner) && "forName".equals(methodName)) {
                     return new ReflectiveCall(
                         ReflectiveType.CLASS_FOR_NAME,
                         sourceClass, currentMethod,
@@ -176,19 +168,28 @@ public class AsmMethodCallExtractor implements MethodCallExtractor {
                     );
                 }
                 
-                // Class.getMethod() / getDeclaredMethod()
-                if (owner.equals("java/lang/Class") &&
-                    (name.equals("getMethod") || name.equals("getDeclaredMethod"))) {
+                // Class.getMethod()
+                if ("java/lang/Class".equals(owner) && "getMethod".equals(methodName)) {
                     return new ReflectiveCall(
                         ReflectiveType.GET_METHOD,
                         sourceClass, currentMethod,
-                        name + "()",
+                        "getMethod()",
+                        lastStringConstant
+                    );
+                }
+                
+                // Class.getDeclaredMethod()
+                if ("java/lang/Class".equals(owner) && "getDeclaredMethod".equals(methodName)) {
+                    return new ReflectiveCall(
+                        ReflectiveType.GET_DECLARED_METHOD,
+                        sourceClass, currentMethod,
+                        "getDeclaredMethod()",
                         lastStringConstant
                     );
                 }
                 
                 // Method.invoke()
-                if (owner.equals("java/lang/reflect/Method") && name.equals("invoke")) {
+                if ("java/lang/reflect/Method".equals(owner) && "invoke".equals(methodName)) {
                     return new ReflectiveCall(
                         ReflectiveType.METHOD_INVOKE,
                         sourceClass, currentMethod,
@@ -198,7 +199,7 @@ public class AsmMethodCallExtractor implements MethodCallExtractor {
                 }
                 
                 // Constructor.newInstance()
-                if (owner.equals("java/lang/reflect/Constructor") && name.equals("newInstance")) {
+                if ("java/lang/reflect/Constructor".equals(owner) && "newInstance".equals(methodName)) {
                     return new ReflectiveCall(
                         ReflectiveType.CONSTRUCTOR_NEW_INSTANCE,
                         sourceClass, currentMethod,
@@ -208,7 +209,7 @@ public class AsmMethodCallExtractor implements MethodCallExtractor {
                 }
                 
                 // Class.newInstance() [deprecated]
-                if (owner.equals("java/lang/Class") && name.equals("newInstance")) {
+                if ("java/lang/Class".equals(owner) && "newInstance".equals(methodName)) {
                     return new ReflectiveCall(
                         ReflectiveType.CLASS_NEW_INSTANCE,
                         sourceClass, currentMethod,
@@ -217,13 +218,43 @@ public class AsmMethodCallExtractor implements MethodCallExtractor {
                     );
                 }
                 
-                // Field.get() / Field.set()
-                if (owner.equals("java/lang/reflect/Field") &&
-                    (name.equals("get") || name.equals("set"))) {
+                // Field.get()
+                if ("java/lang/reflect/Field".equals(owner) && "get".equals(methodName)) {
                     return new ReflectiveCall(
-                        ReflectiveType.FIELD_ACCESS,
+                        ReflectiveType.FIELD_GET,
                         sourceClass, currentMethod,
-                        "Field." + name + "()",
+                        "Field.get()",
+                        null
+                    );
+                }
+                
+                // Field.set()
+                if ("java/lang/reflect/Field".equals(owner) && "set".equals(methodName)) {
+                    return new ReflectiveCall(
+                        ReflectiveType.FIELD_SET,
+                        sourceClass, currentMethod,
+                        "Field.set()",
+                        null
+                    );
+                }
+                
+                // Object.getClass()
+                if ("java/lang/Object".equals(owner) && "getClass".equals(methodName)) {
+                    return new ReflectiveCall(
+                        ReflectiveType.GET_CLASS,
+                        sourceClass, currentMethod,
+                        "getClass()",
+                        null
+                    );
+                }
+                
+                // Class.getName() / getSimpleName() / getCanonicalName()
+                if ("java/lang/Class".equals(owner) && 
+                    (methodName.equals("getName") || methodName.equals("getSimpleName") || methodName.equals("getCanonicalName"))) {
+                    return new ReflectiveCall(
+                        ReflectiveType.CLASS_GET_NAME,
+                        sourceClass, currentMethod,
+                        "Class." + methodName + "()",
                         null
                     );
                 }

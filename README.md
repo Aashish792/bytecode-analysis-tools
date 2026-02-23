@@ -307,14 +307,16 @@ By tracking `LDC` instructions that precede reflection calls, we can often ident
 git clone https://github.com/Aashish792/bytecode-analysis-tools.git
 cd bytecode-analysis-tools
 
+```bash
 # Build
-mvn clean package
+mvn clean package -DskipTests
 
 # Run
 java -jar target/bytecode-analysis-tools-1.0.0.jar
 
-# Open browser
+# Open
 http://localhost:8080
+```
 ```
 
 ### Test with Example JARs
@@ -445,3 +447,4 @@ curl -X POST http://localhost:8080/api/diff \
 ## 📄 License
 
 MIT License - See [LICENSE](LICENSE) for details.
+

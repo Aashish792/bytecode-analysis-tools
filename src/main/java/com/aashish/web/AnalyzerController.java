@@ -11,33 +11,15 @@ import java.util.*;
 
 /**
  * REST API for bytecode analysis tools.
- * 
- * ENDPOINTS:
- * - POST /api/analyze - Analyze dependencies between two JARs
- * - POST /api/diff    - Compare two JARs for build variability
- * 
- * Both endpoints support file upload via multipart/form-data.
  */
 @RestController
 @RequestMapping("/api")
 @CrossOrigin(origins = "*")
 public class AnalyzerController {
     
-    private final JarDependencyAnalyzer dependencyAnalyzer;
-    private final BuildDiffAnalyzer diffAnalyzer;
+    private final JarDependencyAnalyzer dependencyAnalyzer = new JarDependencyAnalyzer();
+    private final BuildDiffAnalyzer diffAnalyzer = new BuildDiffAnalyzer();
     
-    public AnalyzerController() {
-        this.dependencyAnalyzer = new JarDependencyAnalyzer();
-        this.diffAnalyzer = new BuildDiffAnalyzer();
-    }
-    
-    /**
-     * Analyze dependencies between two JARs.
-     * 
-     * @param source The source JAR (containing calls)
-     * @param target The target JAR (containing definitions)
-     * @param bidirectional If true, analyze both directions
-     */
     @PostMapping("/analyze")
     public ResponseEntity<?> analyzeDependencies(
             @RequestParam("source") MultipartFile source,
@@ -48,8 +30,8 @@ public class AnalyzerController {
         Path targetPath = null;
         
         try {
-            sourcePath = saveToTemp(source);
-            targetPath = saveToTemp(target);
+            sourcePath = saveToTemp(source, "source");
+            targetPath = saveToTemp(target, "target");
             
             Map<String, Object> response = new LinkedHashMap<>();
             
@@ -73,15 +55,12 @@ public class AnalyzerController {
             
         } catch (Exception e) {
             return ResponseEntity.badRequest()
-                .body(Map.of("error", e.getMessage()));
+                .body(Map.of("error", e.getMessage(), "type", e.getClass().getSimpleName()));
         } finally {
             cleanup(sourcePath, targetPath);
         }
     }
     
-    /**
-     * Compare two JARs for build variability.
-     */
     @PostMapping("/diff")
     public ResponseEntity<?> compareBuild(
             @RequestParam("jar1") MultipartFile jar1,
@@ -91,8 +70,8 @@ public class AnalyzerController {
         Path jar2Path = null;
         
         try {
-            jar1Path = saveToTemp(jar1);
-            jar2Path = saveToTemp(jar2);
+            jar1Path = saveToTemp(jar1, "jar1");
+            jar2Path = saveToTemp(jar2, "jar2");
             
             DiffResult result = diffAnalyzer.compare(
                 jar1Path.toString(),
@@ -103,14 +82,71 @@ public class AnalyzerController {
             
         } catch (Exception e) {
             return ResponseEntity.badRequest()
-                .body(Map.of("error", e.getMessage()));
+                .body(Map.of("error", e.getMessage(), "type", e.getClass().getSimpleName()));
         } finally {
             cleanup(jar1Path, jar2Path);
         }
     }
     
-    private Path saveToTemp(MultipartFile file) throws IOException {
-        Path temp = Files.createTempFile("analysis_", ".jar");
+    @PostMapping("/scan")
+    public ResponseEntity<?> scanReflection(@RequestParam("jar") MultipartFile jar) {
+        Path jarPath = null;
+        
+        try {
+            jarPath = saveToTemp(jar, "scan");
+            
+            var result = dependencyAnalyzer.analyze(jarPath.toString(), jarPath.toString());
+            
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("jar", jar.getOriginalFilename());
+            response.put("totalCalls", result.getSourceCallCount());
+            response.put("reflectionCount", result.getReflectiveCallCount());
+            response.put("analysisTimeMs", result.getAnalysisTimeMs());
+            
+            if (result.hasReflectionWarnings()) {
+                response.put("hasReflection", true);
+                
+                Map<String, Long> byType = new LinkedHashMap<>();
+                result.getReflectionByType().forEach((k, v) -> byType.put(k.name(), v));
+                response.put("reflectionByType", byType);
+                
+                List<Map<String, String>> reflections = result.getReflectiveCalls().stream()
+                    .limit(50)
+                    .map(rc -> {
+                        Map<String, String> m = new LinkedHashMap<>();
+                        m.put("type", rc.type().name());
+                        m.put("pattern", rc.pattern());
+                        m.put("location", rc.callerClass() + "." + rc.callerMethod());
+                        m.put("target", rc.potentialTarget() != null ? rc.potentialTarget() : "dynamic");
+                        return m;
+                    })
+                    .toList();
+                response.put("reflectiveCalls", reflections);
+            } else {
+                response.put("hasReflection", false);
+            }
+            
+            if (result.hasErrors()) {
+                response.put("errors", result.getErrors());
+            }
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(Map.of("error", e.getMessage(), "type", e.getClass().getSimpleName()));
+        } finally {
+            cleanup(jarPath);
+        }
+    }
+    
+    @GetMapping("/health")
+    public ResponseEntity<?> health() {
+        return ResponseEntity.ok(Map.of("status", "ok", "timestamp", System.currentTimeMillis()));
+    }
+    
+    private Path saveToTemp(MultipartFile file, String prefix) throws IOException {
+        Path temp = Files.createTempFile(prefix + "_", ".jar");
         file.transferTo(temp);
         return temp;
     }
@@ -141,7 +177,7 @@ public class AnalyzerController {
         
         // Sample calls
         List<String> samples = r.getMatchingCalls().stream()
-            .limit(25)
+            .limit(30)
             .map(MethodCall::toReadableString)
             .toList();
         map.put("sampleCalls", samples);
@@ -152,17 +188,21 @@ public class AnalyzerController {
             map.put("reflectionCount", r.getReflectiveCallCount());
             
             List<Map<String, String>> reflections = r.getReflectiveCalls().stream()
-                .limit(20)
+                .limit(25)
                 .map(rc -> {
                     Map<String, String> m = new LinkedHashMap<>();
                     m.put("type", rc.type().name());
                     m.put("pattern", rc.pattern());
                     m.put("location", rc.callerClass() + "." + rc.callerMethod());
-                    m.put("target", rc.potentialTarget() != null ? rc.potentialTarget() : "unknown");
+                    m.put("target", rc.potentialTarget() != null ? rc.potentialTarget() : "dynamic");
                     return m;
                 })
                 .toList();
             map.put("reflectiveCalls", reflections);
+        }
+        
+        if (r.hasErrors()) {
+            map.put("errors", r.getErrors());
         }
         
         return map;
@@ -198,15 +238,22 @@ public class AnalyzerController {
         if (r.hasJdkMismatch()) {
             map.put("jdkMismatchWarning", true);
         }
+        if (r.hasBytecodeVersionMismatch()) {
+            map.put("bytecodeVersionMismatch", true);
+        }
         map.put("recommendation", r.getRecommendation());
+        
+        if (!r.getWarnings().isEmpty()) {
+            map.put("warnings", r.getWarnings());
+        }
         
         // Differences
         List<Map<String, String>> diffs = r.getDifferences().stream()
             .filter(d -> d.type() == DiffResult.DiffType.DIFFERENT)
-            .limit(30)
+            .limit(50)
             .map(d -> Map.of(
-                "class", d.className().replace("/", "."),
-                "reason", d.reason(),
+                "class", d.className(),
+                "reason", d.reason() != null ? d.reason() : "",
                 "details", d.details() != null ? d.details() : ""
             ))
             .toList();
@@ -216,6 +263,7 @@ public class AnalyzerController {
     }
     
     private String extractFileName(String path) {
+        if (path == null) return "unknown";
         int lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
         return lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
     }

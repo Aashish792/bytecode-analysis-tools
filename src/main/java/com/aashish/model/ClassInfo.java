@@ -2,23 +2,18 @@ package com.aashish.model;
 
 /**
  * Metadata about a single class file for build comparison.
- * 
- * Captures structural information that can help explain
- * why two class files differ.
  */
 public record ClassInfo(
-    String name,
+    String className,
     String hash,
     int bytecodeVersion,
     int methodCount,
     int fieldCount,
     boolean hasLineNumbers,
     boolean hasLocalVariables,
-    String sourceFile
+    String sourceFile,
+    long size
 ) {
-    /**
-     * Maps bytecode version to Java version string.
-     */
     public String getJavaVersion() {
         return switch (bytecodeVersion) {
             case 45 -> "Java 1.1";
@@ -43,13 +38,11 @@ public record ClassInfo(
             case 64 -> "Java 20";
             case 65 -> "Java 21";
             case 66 -> "Java 22";
+            case 67 -> "Java 23";
             default -> "Java " + (bytecodeVersion - 44);
         };
     }
     
-    /**
-     * Returns true if this class has debug information compiled in.
-     */
     public boolean hasDebugInfo() {
         return hasLineNumbers || hasLocalVariables;
     }

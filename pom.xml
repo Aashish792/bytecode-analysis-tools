@@ -10,18 +10,9 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>Bytecode Analysis Tools</name>
     <description>
         ASM-based bytecode analysis with reflection detection and build variability analysis.
-        Designed for reproducible builds research.
     </description>
-    
-    <developers>
-        <developer>
-            <name>Aashish K C</name>
-            <email>asiskc143@gmail.com</email>
-        </developer>
-    </developers>
 
     <parent>
         <groupId>org.springframework.boot</groupId>
@@ -35,20 +26,17 @@
     </properties>
 
     <dependencies>
-        <!-- Spring Boot Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- ASM - Industry-standard Java bytecode manipulation -->
         <dependency>
             <groupId>org.ow2.asm</groupId>
             <artifactId>asm</artifactId>
             <version>${asm.version}</version>
         </dependency>
 
-        <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -61,13 +49,6 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            
-            <!-- Surefire for tests -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.1.2</version>
             </plugin>
         </plugins>
     </build>

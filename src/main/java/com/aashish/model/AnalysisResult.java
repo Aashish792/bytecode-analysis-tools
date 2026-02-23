@@ -5,9 +5,6 @@ import java.util.stream.Collectors;
 
 /**
  * Complete result of JAR dependency analysis.
- * 
- * Uses Builder pattern for incremental construction during analysis.
- * Provides computed properties for easy result interpretation.
  */
 public final class AnalysisResult {
     
@@ -18,6 +15,7 @@ public final class AnalysisResult {
     private final Set<MethodCall> matchingCalls;
     private final List<ReflectiveCall> reflectiveCalls;
     private final long analysisTimeMs;
+    private final List<String> errors;
     
     private AnalysisResult(Builder builder) {
         this.sourceJar = builder.sourceJar;
@@ -27,9 +25,8 @@ public final class AnalysisResult {
         this.matchingCalls = Collections.unmodifiableSet(new HashSet<>(builder.matchingCalls));
         this.reflectiveCalls = Collections.unmodifiableList(new ArrayList<>(builder.reflectiveCalls));
         this.analysisTimeMs = builder.analysisTimeMs;
+        this.errors = Collections.unmodifiableList(new ArrayList<>(builder.errors));
     }
-    
-    // ==================== GETTERS ====================
     
     public String getSourceJar() { return sourceJar; }
     public String getTargetJar() { return targetJar; }
@@ -38,20 +35,12 @@ public final class AnalysisResult {
     public Set<MethodCall> getMatchingCalls() { return matchingCalls; }
     public List<ReflectiveCall> getReflectiveCalls() { return reflectiveCalls; }
     public long getAnalysisTimeMs() { return analysisTimeMs; }
+    public List<String> getErrors() { return errors; }
     
-    // ==================== COMPUTED PROPERTIES ====================
+    public int getMatchingCallCount() { return matchingCalls.size(); }
+    public int getReflectiveCallCount() { return reflectiveCalls.size(); }
+    public boolean hasErrors() { return !errors.isEmpty(); }
     
-    public int getMatchingCallCount() { 
-        return matchingCalls.size(); 
-    }
-    
-    public int getReflectiveCallCount() { 
-        return reflectiveCalls.size(); 
-    }
-    
-    /**
-     * Percentage of target methods that are called from source.
-     */
     public double getCoveragePercentage() {
         if (targetMethodCount == 0) return 0.0;
         long uniqueMethodsCalled = matchingCalls.stream()
@@ -61,35 +50,19 @@ public final class AnalysisResult {
         return (uniqueMethodsCalled * 100.0) / targetMethodCount;
     }
     
-    /**
-     * Breakdown of calls by invoke type.
-     */
     public Map<InvokeType, Long> getCallsByInvokeType() {
         return matchingCalls.stream()
-            .collect(Collectors.groupingBy(
-                MethodCall::invokeType, 
-                () -> new EnumMap<>(InvokeType.class),
-                Collectors.counting()
-            ));
+            .collect(Collectors.groupingBy(MethodCall::invokeType, Collectors.counting()));
     }
     
-    /**
-     * Breakdown of reflection by type.
-     */
     public Map<ReflectiveType, Long> getReflectionByType() {
         return reflectiveCalls.stream()
-            .collect(Collectors.groupingBy(
-                ReflectiveCall::type,
-                () -> new EnumMap<>(ReflectiveType.class),
-                Collectors.counting()
-            ));
+            .collect(Collectors.groupingBy(ReflectiveCall::type, Collectors.counting()));
     }
     
     public boolean hasReflectionWarnings() {
         return !reflectiveCalls.isEmpty();
     }
-    
-    // ==================== BUILDER ====================
     
     public static Builder builder() {
         return new Builder();
@@ -103,6 +76,7 @@ public final class AnalysisResult {
         private Set<MethodCall> matchingCalls = new HashSet<>();
         private List<ReflectiveCall> reflectiveCalls = new ArrayList<>();
         private long analysisTimeMs = 0;
+        private List<String> errors = new ArrayList<>();
         
         public Builder sourceJar(String val) { sourceJar = val; return this; }
         public Builder targetJar(String val) { targetJar = val; return this; }
@@ -111,6 +85,8 @@ public final class AnalysisResult {
         public Builder matchingCalls(Set<MethodCall> val) { matchingCalls = val; return this; }
         public Builder reflectiveCalls(List<ReflectiveCall> val) { reflectiveCalls = val; return this; }
         public Builder analysisTimeMs(long val) { analysisTimeMs = val; return this; }
+        public Builder errors(List<String> val) { errors = val; return this; }
+        public Builder addError(String error) { errors.add(error); return this; }
         
         public AnalysisResult build() {
             return new AnalysisResult(this);

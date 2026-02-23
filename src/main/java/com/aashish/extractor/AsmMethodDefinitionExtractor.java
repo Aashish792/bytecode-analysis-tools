@@ -8,30 +8,30 @@ import java.util.jar.*;
 
 /**
  * ASM-based implementation for extracting method definitions.
- * 
- * Uses ASM's visitor pattern for memory-efficient analysis.
- * Does not load classes into JVM - works purely on bytecode.
- * 
- * WHY ASM?
- * - Industry standard (used by Spring, Gradle, Hibernate)
- * - Fastest bytecode library available
- * - Event-driven visitor pattern = low memory footprint
- * - Supports all Java versions including Java 21
  */
 public class AsmMethodDefinitionExtractor implements MethodDefinitionExtractor {
-    
+
     @Override
     public Set<MethodSignature> extract(String jarPath) throws IOException {
         Set<MethodSignature> methods = new HashSet<>();
         
-        try (JarFile jar = new JarFile(jarPath)) {
+        File jarFile = new File(jarPath);
+        if (!jarFile.exists()) {
+            throw new IOException("JAR file not found: " + jarPath);
+        }
+        
+        try (JarFile jar = new JarFile(jarFile)) {
             Enumeration<JarEntry> entries = jar.entries();
             
             while (entries.hasMoreElements()) {
                 JarEntry entry = entries.nextElement();
                 
                 if (isValidClassFile(entry)) {
-                    extractMethodsFromClass(jar, entry, methods);
+                    try {
+                        extractMethodsFromClass(jar, entry, methods);
+                    } catch (Exception e) {
+                        // Skip problematic classes, continue with others
+                    }
                 }
             }
         }
@@ -40,24 +40,22 @@ public class AsmMethodDefinitionExtractor implements MethodDefinitionExtractor {
     }
     
     private boolean isValidClassFile(JarEntry entry) {
-        String name = entry.getName();
-        return name.endsWith(".class")
-            && !name.equals("module-info.class")
-            && !name.equals("package-info.class")
-            && !name.contains("$"); // Skip inner classes for cleaner results
+        String entryName = entry.getName();
+        return entryName.endsWith(".class")
+            && !entryName.equals("module-info.class")
+            && !entryName.equals("package-info.class")
+            && !entryName.contains("META-INF/versions/");
     }
     
     private void extractMethodsFromClass(JarFile jar, JarEntry entry, 
                                           Set<MethodSignature> methods) throws IOException {
         try (InputStream is = jar.getInputStream(entry)) {
-            ClassReader reader = new ClassReader(is);
-            reader.accept(new MethodDefinitionVisitor(methods), ClassReader.SKIP_DEBUG);
+            byte[] bytes = is.readAllBytes();
+            ClassReader reader = new ClassReader(bytes);
+            reader.accept(new MethodDefinitionVisitor(methods), ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
         }
     }
     
-    /**
-     * ASM ClassVisitor that collects method definitions.
-     */
     private static class MethodDefinitionVisitor extends ClassVisitor {
         private final Set<MethodSignature> methods;
         private String className;
@@ -68,23 +66,19 @@ public class AsmMethodDefinitionExtractor implements MethodDefinitionExtractor {
         }
         
         @Override
-        public void visit(int version, int access, String name, String signature,
+        public void visit(int version, int access, String classname, String signature,
                          String superName, String[] interfaces) {
-            this.className = name;
+            this.className = classname;
         }
         
         @Override
-        public MethodVisitor visitMethod(int access, String name, String descriptor,
+        public MethodVisitor visitMethod(int access, String methodName, String descriptor,
                                          String signature, String[] exceptions) {
-            // Skip synthetic and bridge methods (compiler-generated)
-            boolean isSynthetic = (access & Opcodes.ACC_SYNTHETIC) != 0;
-            boolean isBridge = (access & Opcodes.ACC_BRIDGE) != 0;
-            
-            if (!isSynthetic && !isBridge) {
-                methods.add(new MethodSignature(className, name, descriptor));
+            // Skip synthetic and bridge methods
+            if ((access & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_BRIDGE)) == 0) {
+                methods.add(new MethodSignature(className, methodName, descriptor));
             }
-            
-            return null; // We don't need to visit method body
+            return null;
         }
     }
 }

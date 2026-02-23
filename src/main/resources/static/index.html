@@ -3,1053 +3,341 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bytecode Analysis Suite | Reproducible Builds Research</title>
+    <title>Bytecode Analysis Tools</title>
     <style>
         :root {
             --bg: #0a0a0f;
-            --surface: #12121a;
-            --surface2: #1a1a25;
-            --border: #2a2a3a;
-            --primary: #6366f1;
-            --primary-glow: rgba(99,102,241,0.3);
-            --accent: #22d3ee;
-            --success: #22c55e;
-            --warning: #eab308;
+            --surface: #13131a;
+            --surface2: #1c1c26;
+            --border: #2d2d3d;
+            --primary: #7c3aed;
+            --primary-light: #a78bfa;
+            --accent: #06b6d4;
+            --success: #10b981;
+            --warning: #f59e0b;
             --danger: #ef4444;
-            --text: #e2e8f0;
-            --muted: #64748b;
+            --text: #f1f5f9;
+            --muted: #71717a;
         }
-        
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            line-height: 1.6;
-        }
-        
-        /* Layout */
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
         .app { display: flex; min-height: 100vh; }
-        
-        .sidebar {
-            width: 280px;
-            background: var(--surface);
-            border-right: 1px solid var(--border);
-            padding: 1.5rem;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .main { flex: 1; padding: 2rem; overflow-y: auto; }
-        
-        /* Sidebar */
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 2rem;
-            padding-bottom: 1.5rem;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .logo-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--primary), var(--accent));
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.25rem;
-        }
-        
-        .logo-text h1 { font-size: 1rem; font-weight: 600; }
-        .logo-text span { font-size: 0.7rem; color: var(--muted); }
-        
-        .nav-section { margin-bottom: 1.5rem; }
-        .nav-section h3 { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.75rem; }
-        
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-bottom: 0.25rem;
-            font-size: 0.9rem;
-        }
-        
+        .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); padding: 1rem; display: flex; flex-direction: column; }
+        .logo { padding: 0.5rem 0 1rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+        .logo h1 { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+        .nav-group { margin-bottom: 1rem; }
+        .nav-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; padding-left: 0.5rem; }
+        .nav-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border-radius: 5px; cursor: pointer; font-size: 0.8rem; transition: background 0.15s; }
         .nav-item:hover { background: var(--surface2); }
-        .nav-item.active { background: var(--primary); color: white; }
-        .nav-item .icon { font-size: 1.1rem; }
-        
-        .sidebar-footer {
-            margin-top: auto;
-            padding-top: 1rem;
-            border-top: 1px solid var(--border);
-            font-size: 0.75rem;
-            color: var(--muted);
-        }
-        
-        .sidebar-footer a { color: var(--accent); text-decoration: none; }
-        
-        /* Main Content */
+        .nav-item.active { background: var(--primary); }
+        .sidebar-footer { margin-top: auto; padding-top: 0.75rem; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--muted); }
+        .main { flex: 1; padding: 1.5rem; overflow-y: auto; max-height: 100vh; }
         .page { display: none; }
         .page.active { display: block; }
-        
-        .page-header {
-            margin-bottom: 2rem;
-        }
-        
-        .page-header h2 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
-        }
-        
-        .page-header p { color: var(--muted); font-size: 0.9rem; }
-        
-        /* Cards */
-        .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .card-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 1rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .card-header .icon {
-            width: 36px;
-            height: 36px;
-            background: var(--surface2);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .card-header h3 { font-size: 1rem; font-weight: 600; }
-        
-        /* Upload Area - Different Style */
-        .upload-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .upload-box {
-            background: var(--surface2);
-            border: 2px dashed var(--border);
-            border-radius: 12px;
-            padding: 2rem;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .upload-box::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, var(--primary-glow), transparent);
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        
-        .upload-box:hover::before { opacity: 1; }
+        .page-title { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.25rem; }
+        .page-desc { color: var(--muted); margin-bottom: 1rem; font-size: 0.85rem; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+        .card-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem; }
+        .upload-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem; }
+        .upload-box { background: var(--surface2); border: 2px dashed var(--border); border-radius: 6px; padding: 1.25rem; text-align: center; cursor: pointer; transition: all 0.2s; }
         .upload-box:hover { border-color: var(--primary); }
-        
-        .upload-box.loaded {
-            border-color: var(--success);
-            border-style: solid;
-        }
-        
+        .upload-box.loaded { border-color: var(--success); border-style: solid; }
         .upload-box input { display: none; }
-        
-        .upload-icon {
-            width: 60px;
-            height: 60px;
-            margin: 0 auto 1rem;
-            background: var(--border);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .upload-box.loaded .upload-icon {
-            background: var(--success);
-        }
-        
-        .upload-label { font-weight: 600; margin-bottom: 0.25rem; position: relative; z-index: 1; }
-        .upload-hint { font-size: 0.8rem; color: var(--muted); position: relative; z-index: 1; }
-        .upload-filename { color: var(--accent); font-size: 0.85rem; margin-top: 0.5rem; font-weight: 500; position: relative; z-index: 1; }
-        
-        /* Buttons */
-        .btn {
-            padding: 0.875rem 1.5rem;
-            border: none;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary), #4f46e5);
-            color: white;
-            box-shadow: 0 4px 15px var(--primary-glow);
-        }
-        
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px var(--primary-glow);
-        }
-        
-        .btn-primary:disabled {
-            background: var(--border);
-            box-shadow: none;
-            transform: none;
-            cursor: not-allowed;
-        }
-        
-        .btn-full { width: 100%; justify-content: center; }
-        
-        /* Results */
-        .results-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .stat-card {
-            background: var(--surface2);
-            border-radius: 10px;
-            padding: 1.25rem;
-            text-align: center;
-        }
-        
-        .stat-value {
-            font-size: 1.75rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--primary), var(--accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .stat-label {
-            font-size: 0.75rem;
-            color: var(--muted);
-            margin-top: 0.25rem;
-        }
-        
-        /* Alert Boxes */
-        .alert {
-            padding: 1rem 1.25rem;
-            border-radius: 10px;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: flex-start;
-            gap: 0.75rem;
-        }
-        
-        .alert-warning {
-            background: rgba(234,179,8,0.1);
-            border: 1px solid rgba(234,179,8,0.3);
-        }
-        
-        .alert-warning .alert-icon { color: var(--warning); }
-        
-        .alert-danger {
-            background: rgba(239,68,68,0.1);
-            border: 1px solid rgba(239,68,68,0.3);
-        }
-        
-        .alert-danger .alert-icon { color: var(--danger); }
-        
-        .alert-success {
-            background: rgba(34,197,94,0.1);
-            border: 1px solid rgba(34,197,94,0.3);
-        }
-        
-        .alert-success .alert-icon { color: var(--success); }
-        
-        .alert-content h4 { font-size: 0.9rem; margin-bottom: 0.25rem; }
-        .alert-content p { font-size: 0.8rem; color: var(--muted); }
-        
-        /* Code/List Display */
-        .code-block {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            font-family: 'JetBrains Mono', 'Fira Code', monospace;
-            font-size: 0.8rem;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        
-        .code-block .line {
-            padding: 0.2rem 0;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .code-block .line:last-child { border-bottom: none; }
-        
-        /* Tags */
-        .tag {
-            display: inline-block;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            margin-right: 0.25rem;
-        }
-        
+        .upload-icon { font-size: 1.5rem; margin-bottom: 0.25rem; }
+        .upload-label { font-weight: 500; font-size: 0.8rem; }
+        .upload-hint { font-size: 0.7rem; color: var(--muted); }
+        .upload-file { font-size: 0.75rem; color: var(--accent); margin-top: 0.25rem; }
+        .btn { width: 100%; padding: 0.6rem; background: var(--primary); color: white; border: none; border-radius: 5px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+        .btn:hover { background: var(--primary-light); }
+        .btn:disabled { background: var(--border); cursor: not-allowed; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
+        .stat { background: var(--surface2); border-radius: 5px; padding: 0.6rem; text-align: center; }
+        .stat-value { font-size: 1.1rem; font-weight: 700; color: var(--primary-light); }
+        .stat-label { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; }
+        .alert { padding: 0.6rem; border-radius: 5px; margin-bottom: 0.6rem; display: flex; gap: 0.5rem; font-size: 0.8rem; }
+        .alert-warning { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); }
+        .alert-danger { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); }
+        .alert-success { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); }
+        .alert-icon { font-size: 1rem; }
+        .alert-text h4 { font-size: 0.8rem; margin-bottom: 0.1rem; }
+        .alert-text p { color: var(--muted); font-size: 0.75rem; }
+        .code-block { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 0.5rem; font-family: monospace; font-size: 0.7rem; max-height: 200px; overflow-y: auto; }
+        .code-line { padding: 0.15rem 0; border-bottom: 1px solid var(--border); }
+        .code-line:last-child { border-bottom: none; }
+        .tag { display: inline-block; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.6rem; font-weight: 600; margin-right: 0.2rem; }
         .tag-virtual { background: #3b82f6; }
         .tag-static { background: #8b5cf6; }
         .tag-special { background: #ec4899; }
-        .tag-interface { background: #14b8a6; }
+        .tag-interface { background: #06b6d4; }
         .tag-dynamic { background: #f59e0b; }
-        .tag-reflection { background: #ef4444; }
-        
-        /* Table */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-        }
-        
-        .data-table th,
-        .data-table td {
-            padding: 0.75rem 1rem;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .data-table th {
-            background: var(--surface2);
-            font-weight: 600;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--muted);
-        }
-        
-        .data-table tr:hover td { background: var(--surface2); }
-        
-        /* Loading */
-        .loading {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
-            padding: 2rem;
-            color: var(--muted);
-        }
-        
-        .spinner {
-            width: 24px;
-            height: 24px;
-            border: 3px solid var(--border);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        .data-table th, .data-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
+        .data-table th { background: var(--surface2); font-size: 0.65rem; text-transform: uppercase; color: var(--muted); }
+        .loading { display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 1rem; color: var(--muted); font-size: 0.8rem; }
+        .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        
-        /* Scenario Cards */
-        .scenario-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1rem;
-        }
-        
-        .scenario-card {
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 1.25rem;
-            transition: all 0.2s;
-        }
-        
-        .scenario-card:hover {
-            border-color: var(--primary);
-            transform: translateY(-2px);
-        }
-        
-        .scenario-card h4 {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-        }
-        
-        .scenario-card p { font-size: 0.8rem; color: var(--muted); }
-        
-        /* Direction Toggle */
-        .direction-tabs {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .direction-tab {
-            flex: 1;
-            padding: 0.75rem;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.2s;
-        }
-        
-        .direction-tab:hover { border-color: var(--primary); }
-        .direction-tab.active { background: var(--primary); border-color: var(--primary); }
-        .direction-tab .count { font-size: 1.25rem; font-weight: 700; }
-        .direction-tab .label { font-size: 0.75rem; color: var(--muted); }
-        .direction-tab.active .label { color: rgba(255,255,255,0.8); }
-        
+        .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
+        .tab { flex: 1; padding: 0.5rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; cursor: pointer; text-align: center; }
+        .tab:hover { border-color: var(--primary); }
+        .tab.active { background: var(--primary); border-color: var(--primary); }
+        .tab-count { font-size: 1rem; font-weight: 700; }
+        .tab-label { font-size: 0.6rem; color: var(--muted); }
+        .tab.active .tab-label { color: rgba(255,255,255,0.8); }
+        .scenarios { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; }
+        .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; }
+        .scenario h4 { font-size: 0.8rem; margin-bottom: 0.3rem; }
+        .scenario p { font-size: 0.7rem; color: var(--muted); line-height: 1.4; }
+        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
+        .feature { background: var(--surface2); border-radius: 6px; padding: 0.75rem; }
+        .feature h4 { font-size: 0.8rem; color: var(--accent); margin-bottom: 0.4rem; }
+        .feature ul { list-style: none; font-size: 0.7rem; color: var(--muted); }
+        .feature li { padding: 0.15rem 0 0.15rem 0.75rem; position: relative; }
+        .feature li::before { content: '•'; position: absolute; left: 0; color: var(--primary); }
         .hidden { display: none !important; }
-        
-        /* About Page Styles */
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-        }
-        
-        .feature-card {
-            background: var(--surface2);
-            border-radius: 12px;
-            padding: 1.5rem;
-        }
-        
-        .feature-card h4 {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.75rem;
-            color: var(--accent);
-        }
-        
-        .feature-card ul {
-            list-style: none;
-            font-size: 0.85rem;
-            color: var(--muted);
-        }
-        
-        .feature-card li {
-            padding: 0.35rem 0;
-            padding-left: 1.25rem;
-            position: relative;
-        }
-        
-        .feature-card li::before {
-            content: '→';
-            position: absolute;
-            left: 0;
-            color: var(--primary);
-        }
     </style>
 </head>
 <body>
     <div class="app">
-        <!-- Sidebar -->
         <nav class="sidebar">
-            <div class="logo">
-                <div class="logo-icon">🔬</div>
-                <div class="logo-text">
-                    <h1>ByteAnalyzer</h1>
-                    <span>Research Suite v1.0</span>
-                </div>
+            <div class="logo"><h1>🔬 ByteAnalyzer</h1></div>
+            <div class="nav-group">
+                <div class="nav-label">Analysis</div>
+                <div class="nav-item active" onclick="showPage('dep')">📦 Dependency Analysis</div>
+                <div class="nav-item" onclick="showPage('diff')">🔄 Build Diff</div>
+                <div class="nav-item" onclick="showPage('scan')">🔍 Reflection Scanner</div>
             </div>
-            
-            <div class="nav-section">
-                <h3>Analysis</h3>
-                <div class="nav-item active" onclick="showPage('dependency')">
-                    <span class="icon">📦</span>
-                    <span>Dependency Analysis</span>
-                </div>
-                <div class="nav-item" onclick="showPage('diff')">
-                    <span class="icon">🔄</span>
-                    <span>Build Diff</span>
-                </div>
-                <div class="nav-item" onclick="showPage('reflection')">
-                    <span class="icon">🔍</span>
-                    <span>Reflection Scanner</span>
-                </div>
+            <div class="nav-group">
+                <div class="nav-label">Reference</div>
+                <div class="nav-item" onclick="showPage('scenarios')">⚠️ Common Issues</div>
+                <div class="nav-item" onclick="showPage('about')">📖 How It Works</div>
             </div>
-            
-            <div class="nav-section">
-                <h3>Scenarios</h3>
-                <div class="nav-item" onclick="showPage('scenarios')">
-                    <span class="icon">⚠️</span>
-                    <span>Common Issues</span>
-                </div>
-            </div>
-            
-            <div class="nav-section">
-                <h3>Resources</h3>
-                <div class="nav-item" onclick="showPage('about')">
-                    <span class="icon">📚</span>
-                    <span>How It Works</span>
-                </div>
-            </div>
-            
-            <div class="sidebar-footer">
-                Built by <strong>Aashish K C</strong><br>
-                <a href="https://github.com/Aashish792" target="_blank">GitHub</a> • 
-                <a href="mailto:asiskc143@gmail.com">Contact</a>
-            </div>
+            <div class="sidebar-footer">Built by <strong>Aashish K C</strong></div>
         </nav>
         
-        <!-- Main Content -->
         <main class="main">
-            <!-- Dependency Analysis Page -->
-            <div id="page-dependency" class="page active">
-                <div class="page-header">
-                    <h2>📦 JAR Dependency Analysis</h2>
-                    <p>Find method calls between JARs with reflection detection</p>
-                </div>
-                
+            <div id="page-dep" class="page active">
+                <h2 class="page-title">📦 Dependency Analysis</h2>
+                <p class="page-desc">Find method calls between JARs with reflection detection</p>
                 <div class="card">
-                    <div class="card-header">
-                        <div class="icon">📤</div>
-                        <h3>Upload JAR Files</h3>
-                    </div>
-                    
-                    <div class="upload-grid">
-                        <div class="upload-box" id="dep-source-zone" onclick="document.getElementById('dep-source').click()">
+                    <div class="card-title">Upload JAR Files</div>
+                    <div class="upload-row">
+                        <div class="upload-box" id="dep-src-zone" onclick="document.getElementById('dep-src').click()">
                             <div class="upload-icon">📦</div>
                             <div class="upload-label">Source JAR</div>
-                            <div class="upload-hint">The JAR making calls</div>
-                            <div class="upload-filename" id="dep-source-name"></div>
-                            <input type="file" id="dep-source" accept=".jar">
+                            <div class="upload-hint">The caller</div>
+                            <div class="upload-file" id="dep-src-name"></div>
+                            <input type="file" id="dep-src" accept=".jar">
                         </div>
-                        <div class="upload-box" id="dep-target-zone" onclick="document.getElementById('dep-target').click()">
+                        <div class="upload-box" id="dep-tgt-zone" onclick="document.getElementById('dep-tgt').click()">
                             <div class="upload-icon">📚</div>
                             <div class="upload-label">Target JAR</div>
-                            <div class="upload-hint">The library being called</div>
-                            <div class="upload-filename" id="dep-target-name"></div>
-                            <input type="file" id="dep-target" accept=".jar">
+                            <div class="upload-hint">The library</div>
+                            <div class="upload-file" id="dep-tgt-name"></div>
+                            <input type="file" id="dep-tgt" accept=".jar">
                         </div>
                     </div>
-                    
-                    <button class="btn btn-primary btn-full" id="dep-analyze-btn" onclick="runDepAnalysis()" disabled>
-                        🔍 Analyze Dependencies
-                    </button>
+                    <button class="btn" id="dep-btn" onclick="runDep()" disabled>🔍 Analyze</button>
                 </div>
-                
-                <div id="dep-loading" class="loading hidden">
-                    <div class="spinner"></div>
-                    <span>Analyzing bytecode...</span>
-                </div>
-                
-                <div id="dep-results"></div>
+                <div id="dep-load" class="loading hidden"><div class="spinner"></div> Analyzing...</div>
+                <div id="dep-out"></div>
             </div>
             
-            <!-- Build Diff Page -->
             <div id="page-diff" class="page">
-                <div class="page-header">
-                    <h2>🔄 Build Variability Analysis</h2>
-                    <p>Compare builds and understand WHY they differ</p>
-                </div>
-                
+                <h2 class="page-title">🔄 Build Diff</h2>
+                <p class="page-desc">Compare JARs and understand why they differ</p>
                 <div class="card">
-                    <div class="card-header">
-                        <div class="icon">📤</div>
-                        <h3>Upload JARs to Compare</h3>
-                    </div>
-                    
-                    <div class="upload-grid">
-                        <div class="upload-box" id="diff-jar1-zone" onclick="document.getElementById('diff-jar1').click()">
+                    <div class="card-title">Upload JARs to Compare</div>
+                    <div class="upload-row">
+                        <div class="upload-box" id="diff-j1-zone" onclick="document.getElementById('diff-j1').click()">
                             <div class="upload-icon">1️⃣</div>
                             <div class="upload-label">JAR 1</div>
-                            <div class="upload-hint">e.g., Maven Central build</div>
-                            <div class="upload-filename" id="diff-jar1-name"></div>
-                            <input type="file" id="diff-jar1" accept=".jar">
+                            <div class="upload-file" id="diff-j1-name"></div>
+                            <input type="file" id="diff-j1" accept=".jar">
                         </div>
-                        <div class="upload-box" id="diff-jar2-zone" onclick="document.getElementById('diff-jar2').click()">
+                        <div class="upload-box" id="diff-j2-zone" onclick="document.getElementById('diff-j2').click()">
                             <div class="upload-icon">2️⃣</div>
                             <div class="upload-label">JAR 2</div>
-                            <div class="upload-hint">e.g., Google/Oracle rebuild</div>
-                            <div class="upload-filename" id="diff-jar2-name"></div>
-                            <input type="file" id="diff-jar2" accept=".jar">
+                            <div class="upload-file" id="diff-j2-name"></div>
+                            <input type="file" id="diff-j2" accept=".jar">
                         </div>
                     </div>
-                    
-                    <button class="btn btn-primary btn-full" id="diff-analyze-btn" onclick="runDiffAnalysis()" disabled>
-                        🔄 Compare Builds
-                    </button>
+                    <button class="btn" id="diff-btn" onclick="runDiff()" disabled>🔄 Compare</button>
                 </div>
-                
-                <div id="diff-loading" class="loading hidden">
-                    <div class="spinner"></div>
-                    <span>Comparing builds...</span>
-                </div>
-                
-                <div id="diff-results"></div>
+                <div id="diff-load" class="loading hidden"><div class="spinner"></div> Comparing...</div>
+                <div id="diff-out"></div>
             </div>
             
-            <!-- Reflection Scanner Page -->
-            <div id="page-reflection" class="page">
-                <div class="page-header">
-                    <h2>🔍 Reflection Pattern Scanner</h2>
-                    <p>Scan a single JAR for reflection patterns that hide dependencies</p>
-                </div>
-                
+            <div id="page-scan" class="page">
+                <h2 class="page-title">🔍 Reflection Scanner</h2>
+                <p class="page-desc">Scan a JAR for reflection patterns</p>
                 <div class="card">
-                    <div class="card-header">
-                        <div class="icon">📤</div>
-                        <h3>Upload JAR to Scan</h3>
-                    </div>
-                    
-                    <div class="upload-box" id="ref-jar-zone" onclick="document.getElementById('ref-jar').click()" style="max-width: 400px; margin: 0 auto 1.5rem;">
+                    <div class="card-title">Upload JAR</div>
+                    <div class="upload-box" id="scan-zone" onclick="document.getElementById('scan-jar').click()" style="max-width:300px;margin:0 auto 0.75rem">
                         <div class="upload-icon">🔍</div>
                         <div class="upload-label">JAR File</div>
-                        <div class="upload-hint">Scan for reflection patterns</div>
-                        <div class="upload-filename" id="ref-jar-name"></div>
-                        <input type="file" id="ref-jar" accept=".jar">
+                        <div class="upload-file" id="scan-name"></div>
+                        <input type="file" id="scan-jar" accept=".jar">
                     </div>
-                    
-                    <button class="btn btn-primary btn-full" id="ref-analyze-btn" onclick="runReflectionScan()" disabled>
-                        🔍 Scan for Reflection
-                    </button>
+                    <button class="btn" id="scan-btn" onclick="runScan()" disabled>🔍 Scan</button>
                 </div>
-                
-                <div id="ref-loading" class="loading hidden">
-                    <div class="spinner"></div>
-                    <span>Scanning for reflection patterns...</span>
-                </div>
-                
-                <div id="ref-results"></div>
+                <div id="scan-load" class="loading hidden"><div class="spinner"></div> Scanning...</div>
+                <div id="scan-out"></div>
             </div>
             
-            <!-- Common Scenarios Page -->
             <div id="page-scenarios" class="page">
-                <div class="page-header">
-                    <h2>⚠️ Common Bytecode Analysis Scenarios</h2>
-                    <p>Issues this tool helps detect and understand</p>
-                </div>
-                
-                <div class="scenario-grid">
-                    <div class="scenario-card">
-                        <h4>🔴 JDK Version Mismatch</h4>
-                        <p>Same source built with different JDKs produces incompatible bytecode. ByteBuffer.flip() returns Buffer in Java 8 but ByteBuffer in Java 11, causing NoSuchMethodError.</p>
-                    </div>
-                    
-                    <div class="scenario-card">
-                        <h4>🟠 Covariant Return Types</h4>
-                        <p>Compiler generates bridge methods for covariant returns. Java 8 vs 11 generate different call signatures, breaking binary compatibility.</p>
-                    </div>
-                    
-                    <div class="scenario-card">
-                        <h4>🟡 Hidden Reflection Dependencies</h4>
-                        <p>Class.forName(), Method.invoke() load classes dynamically. Static analysis misses these - your dependency graph is incomplete.</p>
-                    </div>
-                    
-                    <div class="scenario-card">
-                        <h4>🔵 Debug Info Variance</h4>
-                        <p>Line numbers and local variable tables differ between builds. Harmless for execution but causes hash mismatches.</p>
-                    </div>
-                    
-                    <div class="scenario-card">
-                        <h4>🟣 Timestamp Embedding</h4>
-                        <p>Build timestamps in manifests or bytecode cause non-reproducible builds. Same source → different binary.</p>
-                    </div>
-                    
-                    <div class="scenario-card">
-                        <h4>⚪ Lambda/InvokeDynamic</h4>
-                        <p>Lambda ordering and invokedynamic bootstrap methods may vary between compilations, causing subtle differences.</p>
-                    </div>
-                    
-                    <div class="scenario-card">
-                        <h4>🟤 -target vs -release</h4>
-                        <p>Using -target 8 with JDK 11 still uses JDK 11's stdlib. Use -release 8 to constrain APIs (JEP 247).</p>
-                    </div>
-                    
-                    <div class="scenario-card">
-                        <h4>⚫ Constant Pool Ordering</h4>
-                        <p>Parallel compilation may produce different constant pool orderings. Semantically equivalent but hash-different.</p>
-                    </div>
+                <h2 class="page-title">⚠️ Common Issues</h2>
+                <p class="page-desc">Scenarios this tool helps detect</p>
+                <div class="scenarios">
+                    <div class="scenario"><h4>🔴 JDK Mismatch</h4><p>ByteBuffer.flip() changes between Java 8 and 11, causing NoSuchMethodError.</p></div>
+                    <div class="scenario"><h4>🟠 Covariant Returns</h4><p>Bridge methods differ between JDK versions.</p></div>
+                    <div class="scenario"><h4>🟡 Hidden Reflection</h4><p>Class.forName() and Method.invoke() hide dependencies.</p></div>
+                    <div class="scenario"><h4>🟢 Debug Info</h4><p>Line numbers differ causing hash mismatches.</p></div>
+                    <div class="scenario"><h4>🔵 Timestamps</h4><p>Build timestamps cause non-reproducible builds.</p></div>
+                    <div class="scenario"><h4>🟣 Lambda Ordering</h4><p>InvokeDynamic may vary between compilations.</p></div>
+                    <div class="scenario"><h4>⚪ -target vs -release</h4><p>Use -release flag to constrain stdlib API.</p></div>
+                    <div class="scenario"><h4>⚫ Constant Pool</h4><p>Parallel compilation changes ordering.</p></div>
                 </div>
             </div>
             
-            <!-- About Page -->
             <div id="page-about" class="page">
-                <div class="page-header">
-                    <h2>📚 How It Works</h2>
-                    <p>Technical details about bytecode analysis</p>
+                <h2 class="page-title">📖 How It Works</h2>
+                <p class="page-desc">Technical details</p>
+                <div class="features">
+                    <div class="feature"><h4>🔧 ASM Library</h4><ul><li>Industry-standard bytecode manipulation</li><li>Event-driven visitor pattern</li><li>Supports Java 21+</li></ul></div>
+                    <div class="feature"><h4>📊 5 Invoke Types</h4><ul><li>INVOKEVIRTUAL - instance</li><li>INVOKESTATIC - static</li><li>INVOKESPECIAL - constructor</li><li>INVOKEINTERFACE - interface</li><li>INVOKEDYNAMIC - lambda</li></ul></div>
+                    <div class="feature"><h4>🔍 Reflection Detection</h4><ul><li>Class.forName() tracking</li><li>getMethod() detection</li><li>Method.invoke() detection</li><li>Field access patterns</li></ul></div>
+                    <div class="feature"><h4>📝 Build Comparison</h4><ul><li>SHA-256 hash comparison</li><li>Bytecode version detection</li><li>Debug info detection</li><li>Manifest extraction</li></ul></div>
                 </div>
-                
-                <div class="feature-grid">
-                    <div class="feature-card">
-                        <h4>🔧 ASM Library</h4>
-                        <ul>
-                            <li>Industry-standard bytecode manipulation</li>
-                            <li>Used by Spring, Gradle, Hibernate</li>
-                            <li>Event-driven visitor pattern</li>
-                            <li>Memory efficient - doesn't load classes</li>
-                            <li>Supports Java 21 bytecode</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h4>📊 5 Invoke Types</h4>
-                        <ul>
-                            <li>INVOKEVIRTUAL (182) - instance methods</li>
-                            <li>INVOKESTATIC (184) - static methods</li>
-                            <li>INVOKESPECIAL (183) - constructors</li>
-                            <li>INVOKEINTERFACE (185) - interface calls</li>
-                            <li>INVOKEDYNAMIC (186) - lambdas</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h4>🔍 Reflection Detection</h4>
-                        <ul>
-                            <li>Class.forName() - dynamic loading</li>
-                            <li>getMethod() - method lookup</li>
-                            <li>Method.invoke() - reflective call</li>
-                            <li>Constructor.newInstance()</li>
-                            <li>LDC tracking for target extraction</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h4>📝 Build Diff Analysis</h4>
-                        <ul>
-                            <li>SHA-256 hash comparison</li>
-                            <li>Bytecode version detection</li>
-                            <li>Method/field count tracking</li>
-                            <li>Debug info presence check</li>
-                            <li>Manifest metadata extraction</li>
-                        </ul>
-                    </div>
-                </div>
-                
-                <!-- <div class="card" style="margin-top: 1.5rem;">
-                    <div class="card-header">
-                        <div class="icon">📄</div>
-                        <h3>Research Connection</h3>
-                    </div>
-                    <p style="color: var(--muted); font-size: 0.9rem; line-height: 1.8;">
-                        This tool supports reproducible builds research, particularly relating to 
-                        <a href="https://doi.org/10.1109/ICST62969.2025.10989044" target="_blank" style="color: var(--accent);">
-                        "Towards Cross-Build Differential Testing"</a> (ICST 2025) which analyzed 3,541 binary pairs 
-                        and found JDK version mismatches causing runtime failures.
-                    </p>
-                </div> -->
             </div>
         </main>
     </div>
     
     <script>
-        // Navigation
-        function showPage(page) {
+        function showPage(id) {
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             event.currentTarget.classList.add('active');
-            document.getElementById('page-' + page).classList.add('active');
+            document.getElementById('page-' + id).classList.add('active');
         }
         
-        // File Upload Setup
         function setupUpload(zoneId, inputId, nameId, checkFn) {
-            const zone = document.getElementById(zoneId);
-            const input = document.getElementById(inputId);
-            const nameEl = document.getElementById(nameId);
-            
-            input.addEventListener('change', () => {
-                if (input.files[0]) {
-                    nameEl.textContent = input.files[0].name;
-                    zone.classList.add('loaded');
-                    checkFn();
-                }
-            });
-            
-            zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor = 'var(--accent)'; });
-            zone.addEventListener('dragleave', () => { zone.style.borderColor = ''; });
-            zone.addEventListener('drop', e => {
-                e.preventDefault();
-                zone.style.borderColor = '';
-                if (e.dataTransfer.files[0]) {
-                    input.files = e.dataTransfer.files;
-                    nameEl.textContent = e.dataTransfer.files[0].name;
-                    zone.classList.add('loaded');
-                    checkFn();
-                }
-            });
+            const zone = document.getElementById(zoneId), input = document.getElementById(inputId), name = document.getElementById(nameId);
+            input.onchange = () => { if(input.files[0]) { name.textContent = input.files[0].name; zone.classList.add('loaded'); checkFn(); }};
+            zone.ondragover = e => { e.preventDefault(); zone.style.borderColor = 'var(--primary)'; };
+            zone.ondragleave = () => zone.style.borderColor = '';
+            zone.ondrop = e => { e.preventDefault(); zone.style.borderColor = ''; if(e.dataTransfer.files[0]) { input.files = e.dataTransfer.files; name.textContent = e.dataTransfer.files[0].name; zone.classList.add('loaded'); checkFn(); }};
         }
         
-        const checkDep = () => {
-            document.getElementById('dep-analyze-btn').disabled = 
-                !(document.getElementById('dep-source').files[0] && document.getElementById('dep-target').files[0]);
-        };
+        const chkDep = () => document.getElementById('dep-btn').disabled = !(document.getElementById('dep-src').files[0] && document.getElementById('dep-tgt').files[0]);
+        const chkDiff = () => document.getElementById('diff-btn').disabled = !(document.getElementById('diff-j1').files[0] && document.getElementById('diff-j2').files[0]);
+        const chkScan = () => document.getElementById('scan-btn').disabled = !document.getElementById('scan-jar').files[0];
         
-        const checkDiff = () => {
-            document.getElementById('diff-analyze-btn').disabled = 
-                !(document.getElementById('diff-jar1').files[0] && document.getElementById('diff-jar2').files[0]);
-        };
+        setupUpload('dep-src-zone', 'dep-src', 'dep-src-name', chkDep);
+        setupUpload('dep-tgt-zone', 'dep-tgt', 'dep-tgt-name', chkDep);
+        setupUpload('diff-j1-zone', 'diff-j1', 'diff-j1-name', chkDiff);
+        setupUpload('diff-j2-zone', 'diff-j2', 'diff-j2-name', chkDiff);
+        setupUpload('scan-zone', 'scan-jar', 'scan-name', chkScan);
         
-        const checkRef = () => {
-            document.getElementById('ref-analyze-btn').disabled = !document.getElementById('ref-jar').files[0];
-        };
-        
-        setupUpload('dep-source-zone', 'dep-source', 'dep-source-name', checkDep);
-        setupUpload('dep-target-zone', 'dep-target', 'dep-target-name', checkDep);
-        setupUpload('diff-jar1-zone', 'diff-jar1', 'diff-jar1-name', checkDiff);
-        setupUpload('diff-jar2-zone', 'diff-jar2', 'diff-jar2-name', checkDiff);
-        setupUpload('ref-jar-zone', 'ref-jar', 'ref-jar-name', checkRef);
-        
-        // API Calls
-        async function runDepAnalysis() {
+        async function runDep() {
             const form = new FormData();
-            form.append('source', document.getElementById('dep-source').files[0]);
-            form.append('target', document.getElementById('dep-target').files[0]);
-            
-            document.getElementById('dep-loading').classList.remove('hidden');
-            document.getElementById('dep-results').innerHTML = '';
-            
+            form.append('source', document.getElementById('dep-src').files[0]);
+            form.append('target', document.getElementById('dep-tgt').files[0]);
+            document.getElementById('dep-load').classList.remove('hidden');
+            document.getElementById('dep-out').innerHTML = '';
             try {
                 const res = await fetch('/api/analyze', { method: 'POST', body: form });
                 const data = await res.json();
-                document.getElementById('dep-results').innerHTML = renderDepResults(data);
+                if (data.error) throw new Error(data.error);
+                document.getElementById('dep-out').innerHTML = renderDep(data);
             } catch (e) {
-                document.getElementById('dep-results').innerHTML = `<div class="alert alert-danger"><span class="alert-icon">❌</span><div class="alert-content"><h4>Error</h4><p>${e.message}</p></div></div>`;
+                document.getElementById('dep-out').innerHTML = `<div class="alert alert-danger"><span class="alert-icon">❌</span><div class="alert-text"><h4>Error</h4><p>${e.message}</p></div></div>`;
             }
-            
-            document.getElementById('dep-loading').classList.add('hidden');
+            document.getElementById('dep-load').classList.add('hidden');
         }
         
-        function renderDepResults(data) {
+        function renderDep(data) {
             let html = '';
-            
             if (data.direction1 && data.direction2) {
-                html += `<div class="direction-tabs">
-                    <div class="direction-tab active" onclick="showDirection(1)">
-                        <div class="count">${data.direction1.matchingCallCount}</div>
-                        <div class="label">${data.direction1.sourceJar} → ${data.direction1.targetJar}</div>
-                    </div>
-                    <div class="direction-tab" onclick="showDirection(2)">
-                        <div class="count">${data.direction2.matchingCallCount}</div>
-                        <div class="label">${data.direction2.sourceJar} → ${data.direction2.targetJar}</div>
-                    </div>
-                </div>`;
-                html += `<div id="dir1">${renderSingleResult(data.direction1)}</div>`;
-                html += `<div id="dir2" class="hidden">${renderSingleResult(data.direction2)}</div>`;
-            } else if (data.result) {
-                html += renderSingleResult(data.result);
-            }
-            
+                html += `<div class="tabs"><div class="tab active" onclick="showDir(1)"><div class="tab-count">${data.direction1.matchingCallCount}</div><div class="tab-label">${data.direction1.sourceJar} → ${data.direction1.targetJar}</div></div><div class="tab" onclick="showDir(2)"><div class="tab-count">${data.direction2.matchingCallCount}</div><div class="tab-label">${data.direction2.sourceJar} → ${data.direction2.targetJar}</div></div></div>`;
+                html += `<div id="dir1">${renderOne(data.direction1)}</div><div id="dir2" class="hidden">${renderOne(data.direction2)}</div>`;
+            } else if (data.result) { html += renderOne(data.result); }
             return html;
         }
         
-        function showDirection(num) {
-            document.querySelectorAll('.direction-tab').forEach((t, i) => t.classList.toggle('active', i === num - 1));
-            document.getElementById('dir1').classList.toggle('hidden', num !== 1);
-            document.getElementById('dir2').classList.toggle('hidden', num !== 2);
+        function showDir(n) {
+            document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i === n-1));
+            document.getElementById('dir1').classList.toggle('hidden', n !== 1);
+            document.getElementById('dir2').classList.toggle('hidden', n !== 2);
         }
         
-        function renderSingleResult(r) {
-            let html = `<div class="card">
-                <div class="results-grid">
-                    <div class="stat-card"><div class="stat-value">${r.targetMethodCount.toLocaleString()}</div><div class="stat-label">Target Methods</div></div>
-                    <div class="stat-card"><div class="stat-value">${r.sourceCallCount.toLocaleString()}</div><div class="stat-label">Source Calls</div></div>
-                    <div class="stat-card"><div class="stat-value">${r.matchingCallCount.toLocaleString()}</div><div class="stat-label">Matches</div></div>
-                    <div class="stat-card"><div class="stat-value">${r.coveragePercentage}</div><div class="stat-label">Coverage</div></div>
-                    <div class="stat-card"><div class="stat-value">${r.analysisTimeMs}ms</div><div class="stat-label">Time</div></div>
-                </div>`;
-            
+        function renderOne(r) {
+            let html = `<div class="card"><div class="stats"><div class="stat"><div class="stat-value">${r.targetMethodCount.toLocaleString()}</div><div class="stat-label">Target Methods</div></div><div class="stat"><div class="stat-value">${r.sourceCallCount.toLocaleString()}</div><div class="stat-label">Source Calls</div></div><div class="stat"><div class="stat-value">${r.matchingCallCount}</div><div class="stat-label">Matches</div></div><div class="stat"><div class="stat-value">${r.coveragePercentage}</div><div class="stat-label">Coverage</div></div><div class="stat"><div class="stat-value">${r.analysisTimeMs}ms</div><div class="stat-label">Time</div></div></div>`;
             if (r.reflectionWarning) {
-                html += `<div class="alert alert-warning">
-                    <span class="alert-icon">⚠️</span>
-                    <div class="alert-content">
-                        <h4>${r.reflectionCount} Reflection Patterns Detected</h4>
-                        <p>These may invoke methods not visible in static analysis. Dependency count could be higher.</p>
-                    </div>
-                </div>`;
-                
-                html += `<div class="code-block">`;
-                r.reflectiveCalls.forEach(rc => {
-                    html += `<div class="line"><span class="tag tag-reflection">${rc.type}</span>${rc.pattern} in ${rc.location}${rc.target !== 'unknown' ? ' → ' + rc.target : ''}</div>`;
-                });
-                html += `</div>`;
+                html += `<div class="alert alert-warning"><span class="alert-icon">⚠️</span><div class="alert-text"><h4>${r.reflectionCount} Reflection Patterns</h4><p>May hide dependencies</p></div></div>`;
+                html += `<div class="code-block">${r.reflectiveCalls.map(c => `<div class="code-line"><span class="tag" style="background:var(--warning)">${c.type}</span> ${c.pattern} in ${c.location}${c.target !== 'dynamic' ? ' → ' + c.target : ''}</div>`).join('')}</div>`;
             }
-            
             if (r.callsByType && Object.keys(r.callsByType).length) {
-                html += `<div style="margin: 1rem 0;">`;
-                Object.entries(r.callsByType).forEach(([type, count]) => {
-                    const cls = type.toLowerCase().replace('invoke', '');
-                    html += `<span class="tag tag-${cls}">${type}: ${count}</span>`;
-                });
-                html += `</div>`;
+                html += `<div style="margin:0.5rem 0">${Object.entries(r.callsByType).map(([t,c]) => `<span class="tag tag-${t.toLowerCase().replace('invoke','')}">${t}: ${c}</span>`).join('')}</div>`;
             }
-            
             if (r.sampleCalls && r.sampleCalls.length) {
-                html += `<div class="code-block">`;
-                r.sampleCalls.forEach(c => { html += `<div class="line">${c}</div>`; });
-                html += `</div>`;
+                html += `<div class="code-block">${r.sampleCalls.map(c => `<div class="code-line">${c}</div>`).join('')}</div>`;
             }
-            
-            html += `</div>`;
-            return html;
+            return html + '</div>';
         }
         
-        async function runDiffAnalysis() {
+        async function runDiff() {
             const form = new FormData();
-            form.append('jar1', document.getElementById('diff-jar1').files[0]);
-            form.append('jar2', document.getElementById('diff-jar2').files[0]);
-            
-            document.getElementById('diff-loading').classList.remove('hidden');
-            document.getElementById('diff-results').innerHTML = '';
-            
+            form.append('jar1', document.getElementById('diff-j1').files[0]);
+            form.append('jar2', document.getElementById('diff-j2').files[0]);
+            document.getElementById('diff-load').classList.remove('hidden');
+            document.getElementById('diff-out').innerHTML = '';
             try {
                 const res = await fetch('/api/diff', { method: 'POST', body: form });
                 const data = await res.json();
-                document.getElementById('diff-results').innerHTML = renderDiffResults(data);
+                if (data.error) throw new Error(data.error);
+                document.getElementById('diff-out').innerHTML = renderDiff(data);
             } catch (e) {
-                document.getElementById('diff-results').innerHTML = `<div class="alert alert-danger"><span class="alert-icon">❌</span><div class="alert-content"><h4>Error</h4><p>${e.message}</p></div></div>`;
+                document.getElementById('diff-out').innerHTML = `<div class="alert alert-danger"><span class="alert-icon">❌</span><div class="alert-text"><h4>Error</h4><p>${e.message}</p></div></div>`;
             }
-            
-            document.getElementById('diff-loading').classList.add('hidden');
+            document.getElementById('diff-load').classList.add('hidden');
         }
         
-        function renderDiffResults(r) {
-            let html = `<div class="card">
-                <div class="results-grid">
-                    <div class="stat-card"><div class="stat-value">${r.jar1ClassCount}</div><div class="stat-label">JAR 1 Classes</div></div>
-                    <div class="stat-card"><div class="stat-value">${r.jar2ClassCount}</div><div class="stat-label">JAR 2 Classes</div></div>
-                    <div class="stat-card"><div class="stat-value" style="background: linear-gradient(135deg, #22c55e, #16a34a); -webkit-background-clip: text;">${r.identicalCount}</div><div class="stat-label">Identical</div></div>
-                    <div class="stat-card"><div class="stat-value" style="background: linear-gradient(135deg, #ef4444, #dc2626); -webkit-background-clip: text;">${r.differentCount}</div><div class="stat-label">Different</div></div>
-                </div>`;
-            
-            html += `<div style="margin-bottom: 1rem; font-size: 0.85rem; color: var(--muted);">
-                <strong>JAR 1:</strong> JDK ${r.jar1Metadata.buildJdk || 'unknown'} • 
-                <strong>JAR 2:</strong> JDK ${r.jar2Metadata.buildJdk || 'unknown'}
-            </div>`;
-            
-            if (r.jdkMismatchWarning) {
-                html += `<div class="alert alert-danger">
-                    <span class="alert-icon">🔴</span>
-                    <div class="alert-content">
-                        <h4>JDK Version Mismatch Detected!</h4>
-                        <p>${r.recommendation}</p>
-                    </div>
-                </div>`;
+        function renderDiff(r) {
+            let html = `<div class="card"><div class="stats"><div class="stat"><div class="stat-value">${r.jar1ClassCount}</div><div class="stat-label">JAR 1</div></div><div class="stat"><div class="stat-value">${r.jar2ClassCount}</div><div class="stat-label">JAR 2</div></div><div class="stat"><div class="stat-value" style="color:var(--success)">${r.identicalCount}</div><div class="stat-label">Identical</div></div><div class="stat"><div class="stat-value" style="color:var(--danger)">${r.differentCount}</div><div class="stat-label">Different</div></div></div>`;
+            html += `<div style="margin-bottom:0.5rem;font-size:0.75rem;color:var(--muted)"><b>JAR 1:</b> JDK ${r.jar1Metadata.buildJdk} | <b>JAR 2:</b> JDK ${r.jar2Metadata.buildJdk}</div>`;
+            if (r.jdkMismatchWarning) { html += `<div class="alert alert-danger"><span class="alert-icon">🔴</span><div class="alert-text"><h4>JDK Mismatch</h4><p>${r.recommendation}</p></div></div>`; }
+            if (r.areIdentical) { html += `<div class="alert alert-success"><span class="alert-icon">✅</span><div class="alert-text"><h4>Identical</h4><p>All classes match</p></div></div>`; }
+            else if (r.differences && r.differences.length) {
+                html += `<table class="data-table"><thead><tr><th>Class</th><th>Reason</th></tr></thead><tbody>${r.differences.map(d => `<tr><td>${d.class}</td><td>${d.reason}</td></tr>`).join('')}</tbody></table>`;
             }
-            
-            if (r.areIdentical) {
-                html += `<div class="alert alert-success">
-                    <span class="alert-icon">✅</span>
-                    <div class="alert-content">
-                        <h4>Binaries are Identical</h4>
-                        <p>All class files have matching SHA-256 hashes.</p>
-                    </div>
-                </div>`;
-            } else if (r.differences && r.differences.length) {
-                html += `<table class="data-table">
-                    <thead><tr><th>Class</th><th>Reason</th></tr></thead>
-                    <tbody>`;
-                r.differences.forEach(d => {
-                    html += `<tr><td>${d.class}</td><td>${d.reason}</td></tr>`;
-                });
-                html += `</tbody></table>`;
-            }
-            
-            html += `<p style="margin-top: 1rem; font-size: 0.8rem; color: var(--muted);">Analysis completed in ${r.analysisTimeMs}ms</p></div>`;
-            return html;
+            return html + `<p style="margin-top:0.5rem;font-size:0.7rem;color:var(--muted)">Completed in ${r.analysisTimeMs}ms</p></div>`;
         }
         
-        async function runReflectionScan() {
+        async function runScan() {
             const form = new FormData();
-            form.append('source', document.getElementById('ref-jar').files[0]);
-            form.append('target', document.getElementById('ref-jar').files[0]);
-            form.append('bidirectional', 'false');
-            
-            document.getElementById('ref-loading').classList.remove('hidden');
-            document.getElementById('ref-results').innerHTML = '';
-            
+            form.append('jar', document.getElementById('scan-jar').files[0]);
+            document.getElementById('scan-load').classList.remove('hidden');
+            document.getElementById('scan-out').innerHTML = '';
             try {
-                const res = await fetch('/api/analyze', { method: 'POST', body: form });
+                const res = await fetch('/api/scan', { method: 'POST', body: form });
                 const data = await res.json();
-                document.getElementById('ref-results').innerHTML = renderReflectionResults(data.result || data.direction1);
+                if (data.error) throw new Error(data.error);
+                document.getElementById('scan-out').innerHTML = renderScan(data);
             } catch (e) {
-                document.getElementById('ref-results').innerHTML = `<div class="alert alert-danger"><span class="alert-icon">❌</span><div class="alert-content"><h4>Error</h4><p>${e.message}</p></div></div>`;
+                document.getElementById('scan-out').innerHTML = `<div class="alert alert-danger"><span class="alert-icon">❌</span><div class="alert-text"><h4>Error</h4><p>${e.message}</p></div></div>`;
             }
-            
-            document.getElementById('ref-loading').classList.add('hidden');
+            document.getElementById('scan-load').classList.add('hidden');
         }
         
-        function renderReflectionResults(r) {
-            let html = `<div class="card">
-                <div class="results-grid">
-                    <div class="stat-card"><div class="stat-value">${r.sourceCallCount.toLocaleString()}</div><div class="stat-label">Total Calls</div></div>
-                    <div class="stat-card"><div class="stat-value">${r.reflectionCount || 0}</div><div class="stat-label">Reflection Patterns</div></div>
-                    <div class="stat-card"><div class="stat-value">${r.analysisTimeMs}ms</div><div class="stat-label">Scan Time</div></div>
-                </div>`;
-            
-            if (r.reflectiveCalls && r.reflectiveCalls.length > 0) {
-                html += `<div class="alert alert-warning">
-                    <span class="alert-icon">⚠️</span>
-                    <div class="alert-content">
-                        <h4>Reflection Patterns Found</h4>
-                        <p>These patterns may load classes or invoke methods dynamically, hiding dependencies from static analysis.</p>
-                    </div>
-                </div>`;
-                
-                html += `<table class="data-table">
-                    <thead><tr><th>Pattern</th><th>Location</th><th>Target</th></tr></thead>
-                    <tbody>`;
-                r.reflectiveCalls.forEach(rc => {
-                    html += `<tr>
-                        <td><span class="tag tag-reflection">${rc.type}</span>${rc.pattern}</td>
-                        <td>${rc.location}</td>
-                        <td>${rc.target !== 'unknown' ? rc.target : '<em style="color:var(--muted)">dynamic</em>'}</td>
-                    </tr>`;
-                });
-                html += `</tbody></table>`;
+        function renderScan(r) {
+            let html = `<div class="card"><div class="stats"><div class="stat"><div class="stat-value">${r.totalCalls.toLocaleString()}</div><div class="stat-label">Total Calls</div></div><div class="stat"><div class="stat-value">${r.reflectionCount}</div><div class="stat-label">Reflection</div></div><div class="stat"><div class="stat-value">${r.analysisTimeMs}ms</div><div class="stat-label">Time</div></div></div>`;
+            if (r.hasReflection && r.reflectiveCalls) {
+                html += `<div class="alert alert-warning"><span class="alert-icon">⚠️</span><div class="alert-text"><h4>Reflection Found</h4><p>May load classes dynamically</p></div></div>`;
+                html += `<table class="data-table"><thead><tr><th>Type</th><th>Location</th><th>Target</th></tr></thead><tbody>${r.reflectiveCalls.map(c => `<tr><td><span class="tag" style="background:var(--warning)">${c.type}</span></td><td>${c.location}</td><td>${c.target}</td></tr>`).join('')}</tbody></table>`;
             } else {
-                html += `<div class="alert alert-success">
-                    <span class="alert-icon">✅</span>
-                    <div class="alert-content">
-                        <h4>No Reflection Patterns Found</h4>
-                        <p>This JAR doesn't appear to use reflection for class loading or method invocation.</p>
-                    </div>
-                </div>`;
+                html += `<div class="alert alert-success"><span class="alert-icon">✅</span><div class="alert-text"><h4>No Reflection</h4><p>No reflection patterns found</p></div></div>`;
             }
-            
-            html += `</div>`;
-            return html;
+            return html + '</div>';
         }
     </script>
 </body>

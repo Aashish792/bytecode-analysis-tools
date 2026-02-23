@@ -10,90 +10,77 @@ import java.util.*;
 import java.util.jar.*;
 
 /**
- * Analyzes and EXPLAINS differences between two JAR files built from the same source.
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- * PURPOSE
- * ═══════════════════════════════════════════════════════════════════════════
- * When the same source code is built in different environments, the resulting
- * binaries may differ. This tool identifies and explains those differences.
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- * CONNECTION TO RESEARCH
- * ═══════════════════════════════════════════════════════════════════════════
- * The ICST 2025 paper "Towards Cross-Build Differential Testing" found that:
- * 
- * 1. JDK version mismatches cause real runtime failures
- *    - ByteBuffer.flip() returns Buffer in Java 8, ByteBuffer in Java 11
- *    - This causes NoSuchMethodError at runtime
- * 
- * 2. Using -target flag alone is NOT sufficient
- *    - Must use -release flag to constrain standard library API
- *    - See JEP 247: https://openjdk.org/jeps/247
- * 
- * 3. 3,541 binary pairs analyzed, found 48+ test failures due to JDK mismatch
- * 
- * This tool helps identify such issues BEFORE they cause production failures.
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- * HOW IT WORKS
- * ═══════════════════════════════════════════════════════════════════════════
- * 1. Extract class files from both JARs
- * 2. Compute SHA-256 hash of each class file
- * 3. Compare hashes to identify differing classes
- * 4. For differing classes, analyze WHY they differ:
- *    - Bytecode version (Java 8 vs Java 11)
- *    - Method/field count changes
- *    - Debug info presence
- * 5. Extract manifest metadata (Build-Jdk-Spec, Created-By)
- * 6. Provide actionable recommendations
- * 
- * @author Aashish K C
+ * Analyzes and explains differences between two JAR files.
  */
 public class BuildDiffAnalyzer {
     
-    /**
-     * Compares two JARs and returns detailed diff report.
-     */
-    public DiffResult compare(String jar1Path, String jar2Path) throws IOException {
+    public DiffResult compare(String jar1Path, String jar2Path) {
         long startTime = System.currentTimeMillis();
+        List<String> warnings = new ArrayList<>();
         
-        // Extract class info from both JARs
-        Map<String, ClassInfo> jar1Classes = extractAllClassInfo(jar1Path);
-        Map<String, ClassInfo> jar2Classes = extractAllClassInfo(jar2Path);
-        
-        // Extract manifest metadata
-        JarMetadata meta1 = extractMetadata(jar1Path);
-        JarMetadata meta2 = extractMetadata(jar2Path);
-        
-        // Compute differences
-        List<ClassDiff> differences = computeDifferences(jar1Classes, jar2Classes);
-        
-        long endTime = System.currentTimeMillis();
-        
-        return new DiffResult(
-            jar1Path, jar2Path,
-            meta1, meta2,
-            jar1Classes.size(), jar2Classes.size(),
-            differences,
-            endTime - startTime
-        );
+        try {
+            // Extract class info from both JARs
+            Map<String, ClassInfo> jar1Classes = extractAllClassInfo(jar1Path, warnings);
+            Map<String, ClassInfo> jar2Classes = extractAllClassInfo(jar2Path, warnings);
+            
+            // Extract manifest metadata
+            JarMetadata meta1 = extractMetadata(jar1Path);
+            JarMetadata meta2 = extractMetadata(jar2Path);
+            
+            // Check for JDK mismatch
+            if (meta1.buildJdk() != null && meta2.buildJdk() != null 
+                && !meta1.buildJdk().equals(meta2.buildJdk())) {
+                warnings.add("JDK version mismatch: " + meta1.buildJdk() + " vs " + meta2.buildJdk());
+            }
+            
+            // Compute differences
+            List<ClassDiff> differences = computeDifferences(jar1Classes, jar2Classes);
+            
+            long endTime = System.currentTimeMillis();
+            
+            return new DiffResult(
+                jar1Path, jar2Path,
+                meta1, meta2,
+                jar1Classes.size(), jar2Classes.size(),
+                differences,
+                endTime - startTime,
+                warnings
+            );
+            
+        } catch (Exception e) {
+            warnings.add("Analysis error: " + e.getMessage());
+            return new DiffResult(
+                jar1Path, jar2Path,
+                JarMetadata.empty(), JarMetadata.empty(),
+                0, 0,
+                List.of(),
+                System.currentTimeMillis() - startTime,
+                warnings
+            );
+        }
     }
     
-    private Map<String, ClassInfo> extractAllClassInfo(String jarPath) throws IOException {
+    private Map<String, ClassInfo> extractAllClassInfo(String jarPath, List<String> warnings) throws IOException {
         Map<String, ClassInfo> classes = new HashMap<>();
         
-        try (JarFile jar = new JarFile(jarPath)) {
+        File jarFile = new File(jarPath);
+        if (!jarFile.exists()) {
+            throw new IOException("JAR file not found: " + jarPath);
+        }
+        
+        try (JarFile jar = new JarFile(jarFile)) {
             Enumeration<JarEntry> entries = jar.entries();
             
             while (entries.hasMoreElements()) {
                 JarEntry entry = entries.nextElement();
                 
-                if (entry.getName().endsWith(".class")) {
+                if (entry.getName().endsWith(".class") && !entry.getName().contains("META-INF")) {
                     try (InputStream is = jar.getInputStream(entry)) {
                         byte[] bytes = is.readAllBytes();
-                        ClassInfo info = analyzeClassBytes(entry.getName(), bytes);
-                        classes.put(info.name(), info);
+                        ClassInfo info = analyzeClassBytes(entry.getName(), bytes, entry.getSize());
+                        classes.put(info.className(), info);
+                    } catch (Exception e) {
+                        warnings.add("Skipped " + entry.getName() + ": " + e.getMessage());
                     }
                 }
             }
@@ -102,25 +89,26 @@ public class BuildDiffAnalyzer {
         return classes;
     }
     
-    private ClassInfo analyzeClassBytes(String entryName, byte[] bytes) throws IOException {
+    private ClassInfo analyzeClassBytes(String entryName, byte[] bytes, long size) throws IOException {
         String hash = computeHash(bytes);
         ClassReader reader = new ClassReader(bytes);
         ClassInfoCollector collector = new ClassInfoCollector();
-        reader.accept(collector, 0); // Don't skip anything - we need debug info
+        reader.accept(collector, 0);
         
         return new ClassInfo(
-            entryName.replace(".class", ""),
+            entryName.replace(".class", "").replace("/", "."),
             hash,
             collector.version,
             collector.methodCount,
             collector.fieldCount,
             collector.hasLineNumbers,
             collector.hasLocalVariables,
-            collector.sourceFile
+            collector.sourceFile,
+            size
         );
     }
     
-    private JarMetadata extractMetadata(String jarPath) throws IOException {
+    private JarMetadata extractMetadata(String jarPath) {
         try (JarFile jar = new JarFile(jarPath)) {
             Manifest manifest = jar.getManifest();
             if (manifest != null) {
@@ -130,9 +118,12 @@ public class BuildDiffAnalyzer {
                     attrs.getValue("Created-By"),
                     attrs.getValue("Built-By"),
                     attrs.getValue("Build-Timestamp"),
-                    attrs.getValue("Main-Class")
+                    attrs.getValue("Main-Class"),
+                    attrs.getValue("Manifest-Version")
                 );
             }
+        } catch (Exception e) {
+            // Ignore manifest errors
         }
         return JarMetadata.empty();
     }
@@ -145,14 +136,13 @@ public class BuildDiffAnalyzer {
             for (byte b : hash) {
                 sb.append(String.format("%02x", b));
             }
-            return sb.toString().substring(0, 16); // Short hash for display
+            return sb.toString().substring(0, 16);
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
+            return "hash-error";
         }
     }
     
-    private List<ClassDiff> computeDifferences(Map<String, ClassInfo> jar1,
-                                                Map<String, ClassInfo> jar2) {
+    private List<ClassDiff> computeDifferences(Map<String, ClassInfo> jar1, Map<String, ClassInfo> jar2) {
         List<ClassDiff> diffs = new ArrayList<>();
         
         Set<String> allClasses = new HashSet<>();
@@ -165,74 +155,55 @@ public class BuildDiffAnalyzer {
             
             if (c1 == null) {
                 diffs.add(new ClassDiff(className, DiffType.ONLY_IN_JAR2, 
-                    "Class only exists in JAR 2", null));
+                    "Only in JAR 2", null));
             } else if (c2 == null) {
                 diffs.add(new ClassDiff(className, DiffType.ONLY_IN_JAR1,
-                    "Class only exists in JAR 1", null));
+                    "Only in JAR 1", null));
             } else if (!c1.hash().equals(c2.hash())) {
                 String reason = explainDifference(c1, c2);
                 String details = buildDetails(c1, c2);
                 diffs.add(new ClassDiff(className, DiffType.DIFFERENT, reason, details));
             }
-            // If hashes match, classes are identical - no diff entry needed
         }
         
         return diffs;
     }
     
-    /**
-     * Analyzes two class files and explains WHY they differ.
-     */
     private String explainDifference(ClassInfo c1, ClassInfo c2) {
         List<String> reasons = new ArrayList<>();
         
-        // Check bytecode version (most important - causes runtime failures)
         if (c1.bytecodeVersion() != c2.bytecodeVersion()) {
-            reasons.add(String.format("Bytecode version: %s vs %s",
-                c1.getJavaVersion(), c2.getJavaVersion()));
+            reasons.add("Bytecode version: " + c1.getJavaVersion() + " vs " + c2.getJavaVersion());
         }
-        
-        // Check structural changes
         if (c1.methodCount() != c2.methodCount()) {
-            reasons.add(String.format("Method count: %d vs %d",
-                c1.methodCount(), c2.methodCount()));
+            reasons.add("Method count: " + c1.methodCount() + " vs " + c2.methodCount());
         }
-        
         if (c1.fieldCount() != c2.fieldCount()) {
-            reasons.add(String.format("Field count: %d vs %d",
-                c1.fieldCount(), c2.fieldCount()));
+            reasons.add("Field count: " + c1.fieldCount() + " vs " + c2.fieldCount());
         }
-        
-        // Check debug info (common source of differences)
         if (c1.hasLineNumbers() != c2.hasLineNumbers()) {
-            reasons.add("Line number info differs");
+            reasons.add("Line numbers: " + c1.hasLineNumbers() + " vs " + c2.hasLineNumbers());
         }
-        
         if (c1.hasLocalVariables() != c2.hasLocalVariables()) {
-            reasons.add("Local variable debug info differs");
+            reasons.add("Local variables: " + c1.hasLocalVariables() + " vs " + c2.hasLocalVariables());
+        }
+        if (c1.size() != c2.size()) {
+            reasons.add("Size: " + c1.size() + " vs " + c2.size() + " bytes");
         }
         
-        // If no specific reason found, it's likely internal bytecode differences
         if (reasons.isEmpty()) {
-            reasons.add("Bytecode differs (likely: constant pool ordering, " +
-                       "optimization differences, or timestamp metadata)");
+            reasons.add("Bytecode differs (constant pool, timestamps, or optimizations)");
         }
         
         return String.join("; ", reasons);
     }
     
     private String buildDetails(ClassInfo c1, ClassInfo c2) {
-        return String.format(
-            "JAR1: %s, %d methods, %d fields, debug=%b | " +
-            "JAR2: %s, %d methods, %d fields, debug=%b",
-            c1.getJavaVersion(), c1.methodCount(), c1.fieldCount(), c1.hasDebugInfo(),
-            c2.getJavaVersion(), c2.methodCount(), c2.fieldCount(), c2.hasDebugInfo()
-        );
+        return String.format("JAR1: %s, %d methods | JAR2: %s, %d methods",
+            c1.getJavaVersion(), c1.methodCount(),
+            c2.getJavaVersion(), c2.methodCount());
     }
     
-    /**
-     * ASM ClassVisitor to collect class metadata.
-     */
     private static class ClassInfoCollector extends ClassVisitor {
         int version;
         int methodCount = 0;
@@ -246,7 +217,7 @@ public class BuildDiffAnalyzer {
         }
         
         @Override
-        public void visit(int version, int access, String name, String signature,
+        public void visit(int version, int access, String className, String signature,
                          String superName, String[] interfaces) {
             this.version = version;
         }
@@ -257,7 +228,7 @@ public class BuildDiffAnalyzer {
         }
         
         @Override
-        public MethodVisitor visitMethod(int access, String name, String descriptor,
+        public MethodVisitor visitMethod(int access, String methodName, String descriptor,
                                          String signature, String[] exceptions) {
             methodCount++;
             return new MethodVisitor(Opcodes.ASM9) {
@@ -267,7 +238,7 @@ public class BuildDiffAnalyzer {
                 }
                 
                 @Override
-                public void visitLocalVariable(String name, String desc, String sig,
+                public void visitLocalVariable(String varName, String desc, String sig,
                                               Label start, Label end, int index) {
                     hasLocalVariables = true;
                 }
@@ -275,7 +246,7 @@ public class BuildDiffAnalyzer {
         }
         
         @Override
-        public FieldVisitor visitField(int access, String name, String descriptor,
+        public FieldVisitor visitField(int access, String fieldName, String descriptor,
                                        String signature, Object value) {
             fieldCount++;
             return null;
