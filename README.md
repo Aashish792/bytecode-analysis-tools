@@ -161,7 +161,7 @@ wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.15
 
 ---
 
-## 🧪 Test Suite
+## Test Suite
 
 ### Running Tests
 
@@ -171,7 +171,7 @@ mvn test
 
 ---
 
-## 📡 API Reference
+## API Reference
 
 ### POST /api/analyze
 
@@ -194,6 +194,6 @@ curl -X POST http://localhost:8080/api/diff \
 
 ---
 
-## 📄 License
+## License
 
 MIT License - See [LICENSE](LICENSE) for details.
